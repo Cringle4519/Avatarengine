@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎭 Complete Avatar System</title>
+
+  <!-- Three.js + Loaders -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #333;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { text-align: center; color: white; margin-bottom: 30px; }
+    .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+
+    .panel {
+      background: white;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .upload-zone {
+      border: 3px dashed #667eea;
+      border-radius: 15px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      background: #f8f9ff;
+    }
+    .upload-zone:hover { background: #f0f2ff; }
+
+    .preview-img {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 15px;
+      margin: 20px auto;
+      display: block;
+    }
+
+    .mode-card {
+      background: #f8f9ff;
+      border: 3px solid #ddd;
+      border-radius: 15px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      margin: 10px;
+    }
+    .mode-card:hover { border-color: #667eea; }
+    .mode-card.selected { border-color: #764ba2; background: #eef; }
+
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 30px;
+      font-size: 1em;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .avatar-display { width: 100%; height: 500px; background: #000; border-radius: 15px; }
+    #threejs-container { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎭 Complete Avatar System</h1>
+      <p>Upload → Generate → Animate → Use in Calls</p>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="panel">
+      <h2>📸 Upload Your Photo</h2>
+      <div class="upload-zone" id="uploadZone">
+        <p>Click or drag your photo here (Max 10MB)</p>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" hidden />
+      <img id="previewImage" class="preview-img" style="display:none;" />
+    </div>
+
+    <!-- Mode Selection -->
+    <div class="panel" id="modePanel" style="display:none;">
+      <h2>🎨 Choose Avatar Type</h2>
+      <div style="display:flex; gap:20px; justify-content:center;">
+        <div class="mode-card" data-mode="3d">🎯 3D Avatar</div>
+        <div class="mode-card" data-mode="stylized">🎨 Stylized Likeness</div>
+      </div>
+      <button id="generateBtn" class="btn" disabled>Generate Avatar</button>
+    </div>
+
+    <!-- Avatar Display -->
+    <div class="panel" id="previewPanel" style="display:none;">
+      <h2>✨ Your Avatar</h2>
+      <div class="avatar-display">
+        <div id="threejs-container"></div>
+        <canvas id="avatarCanvas" style="display:none;"></canvas>
+      </div>
+      <button class="btn" onclick="downloadAvatar()">📥 Download</button>
+    </div>
+  </div>
+
+  <script>
+    let currentImageUrl = null;
+    let selectedMode = null;
+    let avatarResult = null;
+
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const previewImg = document.getElementById('previewImage');
+    const modePanel = document.getElementById('modePanel');
+    const generateBtn = document.getElementById('generateBtn');
+    const previewPanel = document.getElementById('previewPanel');
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) uploadImage(e.target.files[0]);
+    });
+
+    async function uploadImage(file) {
+      const formData = new FormData();
+      formData.append('image', file);
+      const response = await fetch('/api/avatar/upload', { method:'POST', body: formData });
+      const result = await response.json();
+      if(result.success){
+        currentImageUrl = result.imageUrl;
+        previewImg.src = result.imageUrl;
+        previewImg.style.display = 'block';
+        modePanel.style.display = 'block';
+      }
+    }
+
+    document.querySelectorAll('.mode-card').forEach(card=>{
+      card.addEventListener('click', ()=>{
+        document.querySelectorAll('.mode-card').forEach(c=>c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedMode = card.dataset.mode;
+        generateBtn.disabled = false;
+      });
+    });
+
+    generateBtn.addEventListener('click', async ()=>{
+      if(!currentImageUrl || !selectedMode) return;
+      const response = await fetch('/api/avatar/generate-' + selectedMode, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ imageUrl: currentImageUrl })
+      });
+      const result = await response.json();
+      if(result.success){
+        avatarResult = result;
+        previewPanel.style.display = 'block';
+      }
+    });
+
+    function downloadAvatar(){
+      if(!avatarResult) return;
+      const link = document.createElement('a');
+      link.href = avatarResult.avatarUrl;
+      link.download = `avatar_${selectedMode}.${avatarResult.modelFormat}`;
+      link.click();
+    }
+  </script>
+</body>
+</html>
